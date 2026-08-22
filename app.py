@@ -2,8 +2,10 @@ import os
 import re
 import fitz
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 app = Flask(__name__, static_folder='public', static_url_path='')
+CORS(app)
 
 @app.route('/')
 def index():
@@ -54,10 +56,7 @@ def analizar_masivo():
                 nombre_match = re.search(r'Nombre:\s*(.+?)(?=\s+Dias|\s+N\.S\.S|$)', texto_pagina)
                 
                 depto_match = re.search(r'Depto\.:\s*(.+?)(?=\s+Periodo|\n|$)', texto_pagina, re.IGNORECASE)
-                
-                # FIX: Agregamos \s+Periodo como freno para evitar que capture "Periodo Del: xx/xx/xxxx"
                 puesto_match = re.search(r'Puesto:\s*(.+?)(?=\s+Fecha|\s+Periodo|\n|$)', texto_pagina, re.IGNORECASE)
-                
                 faltas_match = re.search(r'Faltas:\s*(\d+)', texto_pagina, re.IGNORECASE)
 
                 if not no_trab_match:

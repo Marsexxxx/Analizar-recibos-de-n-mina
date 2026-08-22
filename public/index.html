@@ -166,7 +166,7 @@
             document.getElementById('cuerpoTabla').innerHTML = `<tr><td colspan='8' class='px-6 py-10 text-center text-asr-green1 font-bold text-lg'><i class='fa-solid fa-spinner fa-spin mr-2'></i> Analizando...</td></tr>`;
 
             try {
-                const respuesta = await fetch('/analizar-masivo', { method: 'POST', body: formData });
+                const respuesta = await fetch('https://mi-primer-proyecto-0qg3.onrender.com/analizar-masivo', { method: 'POST', body: formData });
                 if (!respuesta.ok) throw new Error("Error");
 
                 datosGlobales = await respuesta.json(); 
@@ -186,7 +186,7 @@
                 aplicarFiltros(); 
 
             } catch (error) {
-                document.getElementById('cuerpoTabla').innerHTML = `<tr><td colspan='8' class='px-6 py-8 text-center text-asr-orange font-bold'><i class='fa-solid fa-triangle-exclamation mr-1'></i> Error de conexión.</td></tr>`;
+                document.getElementById('cuerpoTabla').innerHTML = `<tr><td colspan='8' class='px-6 py-8 text-center text-asr-orange font-bold'><i class='fa-solid fa-triangle-exclamation mr-1'></i> Error de conexión con el servidor.</td></tr>`;
             }
         }
 
@@ -287,7 +287,6 @@
         }
 
         function renderizarGraficas() {
-            // Grafica Top 5
             const top5Neto = [...datosEnPantalla]
                 .sort((a, b) => b.valorNeto - a.valorNeto)
                 .slice(0, 5);
@@ -309,7 +308,6 @@
                 </div>`;
             });
 
-            // Grafica de Barras Dinámica (Depto o Puesto)
             const deptoSeleccionado = document.getElementById('filtroDeptoDropdown').value;
             const agruparPor = (deptoSeleccionado === 'todos') ? 'depto' : 'puesto';
             const tituloGrafica = (deptoSeleccionado === 'todos') ? 'Costo General por Departamento' : `Costos por Puesto en: ${deptoSeleccionado}`;
@@ -323,7 +321,6 @@
                 costosAgrupados[clave] += Number(e.valorNeto.toFixed(2));
             });
             
-            // Ordenar de mayor a menor gasto para la gráfica
             const arregloOrdenado = Object.entries(costosAgrupados).sort((a, b) => b[1] - a[1]);
             const etiquetas = arregloOrdenado.map(item => item[0]);
             const valores = arregloOrdenado.map(item => item[1]);
@@ -337,7 +334,7 @@
                     datasets: [{
                         label: 'Neto Pagado',
                         data: valores,
-                        backgroundColor: deptoSeleccionado === 'todos' ? 'rgb(0, 143, 76)' : 'rgb(0, 58, 112)', // Cambia a Navy si es puesto
+                        backgroundColor: deptoSeleccionado === 'todos' ? 'rgb(0, 143, 76)' : 'rgb(0, 58, 112)', 
                         borderRadius: 4
                     }]
                 },
