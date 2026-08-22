@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>ANALIZAR RECIBOS DE NÓMINA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        asr: {
+                            green1: 'rgb(0, 143, 76)',
+                            green2: 'rgb(126, 195, 74)',
+                            green3: 'rgb(188, 216, 83)',
+                            black: 'rgb(0, 0, 0)',
+                            grayDark: 'rgb(99, 100, 102)',
+                            grayLight: 'rgb(167, 169, 172)',
+                            yellow: 'rgb(255, 221, 9)',
+                            navy: 'rgb(0, 58, 112)',
+                            pale: 'rgb(217, 234, 154)',
+                            orange: 'rgb(219, 107, 48)',
+                            lightBlue: 'rgb(164, 219, 232)',
+                            olive: 'rgb(113, 153, 73)'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background-color: #f8fafc; }
+        .shadcn-card { background: white; border: 1px solid #e2e8f0; border-radius: 0.75rem; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); padding: 1.5rem; display: flex; flex-direction: column; }
+        .table-row-hover:hover { background-color: #f0fdf4; }
+        .btn-active { background-color: rgb(0, 143, 76) !important; color: white !important; border-color: transparent !important; }
+        .btn-outline { border: 1px solid rgb(167, 169, 172); color: rgb(99, 100, 102); background: white; }
+        .btn-outline:hover { background: rgb(217, 234, 154); color: rgb(0, 143, 76); border-color: rgb(126, 195, 74); }
+    </style>
+</head>
+<body class="text-asr-grayDark">
+
+    <nav class="bg-asr-green1 border-b-4 border-asr-green3 sticky top-0 z-50 shadow-md">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div>
+                    <h1 class="text-xl font-bold text-white tracking-tight">ANALIZAR RECIBOS DE NÓMINA</h1>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        
+        <div class="shadcn-card flex-row justify-between items-center gap-4 border-l-8 border-l-asr-green1">
+            <div class="flex-1 w-full flex gap-3">
+                <input type="file" id="archivoPdf" accept=".pdf" class="block w-full text-sm text-asr-grayDark file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-asr-green1 hover:file:bg-green-100 cursor-pointer border border-gray-200 rounded-md">
+                <button onclick="procesarPDFMasivo()" class="bg-asr-green1 hover:bg-asr-green2 text-white font-bold py-2 px-5 rounded-md transition shadow-sm flex items-center whitespace-nowrap">
+                    <i class="fa-solid fa-bolt mr-2 text-asr-yellow"></i> Procesar
+                </button>
+            </div>
+            <div class="flex-none">
+                <button onclick="exportarCSV()" class="bg-white border-2 border-asr-green1 hover:bg-asr-green1 hover:text-white text-asr-green1 font-bold py-2 px-5 rounded-md transition shadow-sm flex items-center h-full">
+                    <i class="fa-solid fa-file-excel mr-2"></i> Exportar CSV
+                </button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div class="shadcn-card border-t-4 border-t-asr-grayLight">
+                <p class="text-sm font-bold text-asr-grayLight mb-1 uppercase tracking-wide">Plantilla</p>
+                <p class="text-3xl font-bold text-asr-grayDark" id="kpi-empleados">0</p>
+            </div>
+            <div class="shadcn-card border-t-4 border-t-asr-navy">
+                <p class="text-sm font-bold text-asr-grayLight mb-1 uppercase tracking-wide">Faltas</p>
+                <p class="text-3xl font-bold text-asr-navy" id="kpi-faltas">0</p>
+            </div>
+            <div class="shadcn-card border-t-4 border-t-asr-green2">
+                <p class="text-sm font-bold text-asr-grayLight mb-1 uppercase tracking-wide">Impacto Hrs Extra</p>
+                <p class="text-3xl font-bold text-asr-green1" id="kpi-horas">0 <span class="text-sm text-asr-grayLight font-normal">hrs</span></p>
+            </div>
+            <div class="shadcn-card border-t-4 border-t-asr-orange">
+                <p class="text-sm font-bold text-asr-grayLight mb-1 uppercase tracking-wide">Incidencia</p>
+                <p class="text-3xl font-bold text-asr-orange" id="kpi-porcentaje">0%</p>
+            </div>
+            <div class="shadcn-card border-t-4 border-t-asr-black">
+                <p class="text-sm font-bold text-asr-grayLight mb-1 uppercase tracking-wide">Gasto Neto</p>
+                <p class="text-3xl font-bold text-asr-black" id="kpi-neto">$0.00</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6" id="seccion-graficas" style="display: none;">
+            <div class="shadcn-card lg:col-span-1">
+                <h3 class="text-lg font-bold text-asr-green1 mb-4 border-b border-gray-100 pb-2"><i class="fa-solid fa-ranking-star text-asr-yellow mr-2"></i>Top 5: Neto</h3>
+                <div id="top5Lista" class="flex flex-col gap-3 mt-2 overflow-y-auto" style="max-height: 250px;"></div>
+            </div>
+            <div class="shadcn-card lg:col-span-2">
+                <h3 id="titulo-grafica-barras" class="text-lg font-bold text-asr-green1 mb-4 border-b border-gray-100 pb-2"><i class="fa-solid fa-building text-asr-navy mr-2"></i>Costos por Área</h3>
+                <div class="relative w-full h-64 flex-grow">
+                    <canvas id="chartDepto"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="shadcn-card p-0 overflow-hidden border-t-4 border-t-asr-green1 shadow-lg block">
+            <div class="p-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row justify-between gap-4 items-center">
+                <div class="flex-1 flex flex-col md:flex-row gap-3 w-full">
+                    <div class="relative w-full md:w-1/2">
+                        <i class="fa-solid fa-search absolute left-3 top-3 text-asr-grayLight"></i>
+                        <input type="text" id="buscador" onkeyup="aplicarFiltros()" placeholder="Buscar empleado, depto o puesto..." class="pl-9 pr-4 py-2 w-full border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-asr-green1 font-medium">
+                    </div>
+                    <div class="w-full md:w-1/3">
+                        <select id="filtroDeptoDropdown" onchange="aplicarFiltros()" class="px-4 py-2 w-full border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-asr-green1 font-medium bg-white text-asr-grayDark cursor-pointer">
+                            <option value="todos">Todos los Departamentos</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-2 shrink-0">
+                    <button onclick="setFiltro('todos')" id="btn-filtro-todos" class="btn-outline btn-active px-4 py-2 text-sm font-bold rounded-md transition">Todos</button>
+                    <button onclick="setFiltro('extra')" id="btn-filtro-extra" class="btn-outline px-4 py-2 text-sm font-bold rounded-md transition">Con Horas Extra</button>
+                </div>
+            </div>
+            
+            <div class="overflow-y-auto max-h-[350px] w-full">
+                <table class="w-full text-sm text-left relative">
+                    <thead class="bg-asr-green1 text-white sticky top-0 z-10 shadow">
+                        <tr>
+                            <th class="px-4 py-3 font-bold">No. Emp</th>
+                            <th class="px-4 py-3 font-bold">Nombre del Trabajador</th>
+                            <th class="px-4 py-3 font-bold">Depto</th>
+                            <th class="px-4 py-3 font-bold">Puesto</th>
+                            <th class="px-4 py-3 font-bold text-center">Faltas</th>
+                            <th class="px-4 py-3 font-bold text-center cursor-pointer hover:text-asr-yellow transition" onclick="ordenarDatos('horasDobles')">Hrs Dobles <i class="fa-solid fa-sort ml-1 opacity-70"></i></th>
+                            <th class="px-4 py-3 font-bold text-center cursor-pointer hover:text-asr-yellow transition" onclick="ordenarDatos('horasTriples')">Hrs Triples <i class="fa-solid fa-sort ml-1 opacity-70"></i></th>
+                            <th class="px-4 py-3 font-bold text-right cursor-pointer hover:text-asr-yellow transition" onclick="ordenarDatos('neto')">Neto <i class="fa-solid fa-sort ml-1 opacity-70"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cuerpoTabla" class="divide-y divide-gray-100 bg-white">
+                        <tr>
+                            <td colspan="8" class="px-6 py-12 text-center text-asr-grayLight font-medium">
+                                <i class="fa-solid fa-folder-open text-5xl mb-3 block opacity-50 text-asr-green2"></i>
+                                Sube el reporte de nómina para generar los datos
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let datosGlobales = [];    
+        let datosEnPantalla = [];  
+        let filtroActual = 'todos';
+        let ordenAscendente = false;
+        let deptoChart = null;
+
+        async function procesarPDFMasivo() {
+            const archivoInput = document.getElementById('archivoPdf');
+            if (archivoInput.files.length === 0) return;
+
+            const formData = new FormData();
+            formData.append("recibo", archivoInput.files[0]);
+            
+            document.getElementById('cuerpoTabla').innerHTML = `<tr><td colspan='8' class='px-6 py-10 text-center text-asr-green1 font-bold text-lg'><i class='fa-solid fa-spinner fa-spin mr-2'></i> Analizando...</td></tr>`;
+
+            try {
+                const respuesta = await fetch('/analizar-masivo', { method: 'POST', body: formData });
+                if (!respuesta.ok) throw new Error("Error");
+
+                datosGlobales = await respuesta.json(); 
+                
+                datosGlobales = datosGlobales.map(e => ({
+                    ...e,
+                    valorFaltas: parseInt(e.faltas) || 0,
+                    valorDobles: parseFloat(e.horasDobles) || 0,
+                    valorTriples: parseFloat(e.horasTriples) || 0,
+                    valorNeto: parseFloat(e.neto.replace(/,/g, '')) || 0
+                }));
+
+                datosGlobales.sort((a, b) => a.noTrab.localeCompare(b.noTrab, undefined, {numeric: true}));
+                
+                poblarSelectDepartamentos();
+                document.getElementById('seccion-graficas').style.display = 'grid'; 
+                aplicarFiltros(); 
+
+            } catch (error) {
+                document.getElementById('cuerpoTabla').innerHTML = `<tr><td colspan='8' class='px-6 py-8 text-center text-asr-orange font-bold'><i class='fa-solid fa-triangle-exclamation mr-1'></i> Error de conexión.</td></tr>`;
+            }
+        }
+
+        function poblarSelectDepartamentos() {
+            const select = document.getElementById('filtroDeptoDropdown');
+            const deptos = [...new Set(datosGlobales.map(e => e.depto))].filter(d => d !== "Sin Depto").sort();
+            
+            select.innerHTML = '<option value="todos">Todos los Departamentos</option>';
+            deptos.forEach(d => {
+                select.innerHTML += `<option value="${d}">${d}</option>`;
+            });
+        }
+
+        function setFiltro(tipo) {
+            filtroActual = tipo;
+            document.querySelectorAll('.btn-outline').forEach(btn => btn.classList.remove('btn-active'));
+            document.getElementById(`btn-filtro-${tipo}`).classList.add('btn-active');
+            aplicarFiltros();
+        }
+
+        function aplicarFiltros() {
+            const texto = document.getElementById('buscador').value.toLowerCase();
+            const deptoSeleccionado = document.getElementById('filtroDeptoDropdown').value;
+            
+            datosEnPantalla = datosGlobales.filter(e => {
+                const coincideTexto = e.nombre.toLowerCase().includes(texto) || 
+                                      e.noTrab.toLowerCase().includes(texto) ||
+                                      e.depto.toLowerCase().includes(texto) ||
+                                      e.puesto.toLowerCase().includes(texto);
+                
+                const coincideDepto = deptoSeleccionado === 'todos' || e.depto === deptoSeleccionado;
+
+                if (!coincideTexto || !coincideDepto) return false;
+                if (filtroActual === 'extra') return e.valorDobles > 0 || e.valorTriples > 0;
+                return true; 
+            });
+
+            mostrarTabla(datosEnPantalla);
+            actualizarKPIs();
+            renderizarGraficas();
+        }
+
+        function ordenarDatos(columna) {
+            ordenAscendente = !ordenAscendente;
+            datosEnPantalla.sort((a, b) => {
+                const valA = columna === 'neto' ? a.valorNeto : (columna === 'horasDobles' ? a.valorDobles : a.valorTriples);
+                const valB = columna === 'neto' ? b.valorNeto : (columna === 'horasDobles' ? b.valorDobles : b.valorTriples);
+                return ordenAscendente ? valA - valB : valB - valA;
+            });
+            mostrarTabla(datosEnPantalla);
+        }
+
+        function mostrarTabla(datos) {
+            const cuerpo = document.getElementById('cuerpoTabla');
+            cuerpo.innerHTML = ""; 
+            
+            if(datos.length === 0) {
+                cuerpo.innerHTML = `<tr><td colspan="8" class="px-6 py-8 text-center text-asr-grayLight font-bold">Sin resultados.</td></tr>`;
+                return;
+            }
+
+            datos.forEach(e => {
+                const fila = `
+                <tr class="table-row-hover border-b border-gray-100 transition-colors">
+                    <td class="px-4 py-2 font-bold text-asr-black">${e.noTrab}</td>
+                    <td class="px-4 py-2 text-asr-grayDark font-semibold whitespace-nowrap">${e.nombre}</td>
+                    <td class="px-4 py-2 text-asr-grayDark text-xs">${e.depto}</td>
+                    <td class="px-4 py-2 text-asr-grayDark text-xs">${e.puesto}</td>
+                    <td class="px-4 py-2 text-center font-bold ${e.valorFaltas > 0 ? 'text-asr-orange' : 'text-asr-grayLight'}">${e.faltas}</td>
+                    <td class="px-4 py-2 text-center font-bold ${e.valorDobles > 0 ? 'text-asr-green1 bg-green-50' : 'text-asr-grayLight'}">${e.horasDobles}</td>
+                    <td class="px-4 py-2 text-center font-bold ${e.valorTriples > 0 ? 'text-asr-orange bg-orange-50' : 'text-asr-grayLight'}">${e.horasTriples}</td>
+                    <td class="px-4 py-2 text-right font-bold text-asr-green1">$${e.neto}</td>
+                </tr>`;
+                cuerpo.innerHTML += fila;
+            });
+        }
+
+        function actualizarKPIs() {
+            let totalHrs = 0;
+            let totalNeto = 0;
+            let totalFaltas = 0;
+            let empConExtra = 0;
+
+            datosEnPantalla.forEach(e => {
+                totalHrs += e.valorDobles + e.valorTriples;
+                totalNeto += e.valorNeto;
+                totalFaltas += e.valorFaltas;
+                if (e.valorDobles > 0 || e.valorTriples > 0) empConExtra++;
+            });
+
+            const porcentaje = datosEnPantalla.length > 0 ? ((empConExtra / datosEnPantalla.length) * 100).toFixed(1) : 0;
+
+            document.getElementById('kpi-empleados').innerText = datosEnPantalla.length;
+            document.getElementById('kpi-faltas').innerText = totalFaltas;
+            document.getElementById('kpi-horas').innerHTML = `${Number(totalHrs.toFixed(2))} <span class="text-sm text-asr-grayLight font-normal">hrs</span>`;
+            document.getElementById('kpi-porcentaje').innerText = `${porcentaje}%`;
+            document.getElementById('kpi-neto').innerText = "$" + totalNeto.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        function renderizarGraficas() {
+            // Grafica Top 5
+            const top5Neto = [...datosEnPantalla]
+                .sort((a, b) => b.valorNeto - a.valorNeto)
+                .slice(0, 5);
+
+            const contenedorTop5 = document.getElementById('top5Lista');
+            contenedorTop5.innerHTML = "";
+
+            top5Neto.forEach((emp, index) => {
+                contenedorTop5.innerHTML += `
+                <div class="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-100 mb-2">
+                    <div class="flex items-center gap-3">
+                        <span class="bg-asr-green1 text-white font-bold w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0">${index + 1}</span>
+                        <div class="overflow-hidden">
+                            <p class="text-xs font-bold text-asr-black truncate" title="${emp.nombre}">${emp.nombre}</p>
+                            <p class="text-[10px] text-asr-grayDark truncate">${emp.depto}</p>
+                        </div>
+                    </div>
+                    <span class="font-bold text-asr-green1 ml-2 flex-shrink-0">$${emp.valorNeto.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                </div>`;
+            });
+
+            // Grafica de Barras Dinámica (Depto o Puesto)
+            const deptoSeleccionado = document.getElementById('filtroDeptoDropdown').value;
+            const agruparPor = (deptoSeleccionado === 'todos') ? 'depto' : 'puesto';
+            const tituloGrafica = (deptoSeleccionado === 'todos') ? 'Costo General por Departamento' : `Costos por Puesto en: ${deptoSeleccionado}`;
+            
+            document.getElementById('titulo-grafica-barras').innerHTML = `<i class="fa-solid ${deptoSeleccionado === 'todos' ? 'fa-building' : 'fa-users-gear'} text-asr-navy mr-2"></i>${tituloGrafica}`;
+
+            const costosAgrupados = {};
+            datosEnPantalla.forEach(e => {
+                const clave = e[agruparPor];
+                if(!costosAgrupados[clave]) costosAgrupados[clave] = 0;
+                costosAgrupados[clave] += Number(e.valorNeto.toFixed(2));
+            });
+            
+            // Ordenar de mayor a menor gasto para la gráfica
+            const arregloOrdenado = Object.entries(costosAgrupados).sort((a, b) => b[1] - a[1]);
+            const etiquetas = arregloOrdenado.map(item => item[0]);
+            const valores = arregloOrdenado.map(item => item[1]);
+
+            if(deptoChart) deptoChart.destroy();
+            const ctxDepto = document.getElementById('chartDepto').getContext('2d');
+            deptoChart = new Chart(ctxDepto, {
+                type: 'bar',
+                data: {
+                    labels: etiquetas.map(l => l.length > 20 ? l.substring(0,20) + '...' : l),
+                    datasets: [{
+                        label: 'Neto Pagado',
+                        data: valores,
+                        backgroundColor: deptoSeleccionado === 'todos' ? 'rgb(0, 143, 76)' : 'rgb(0, 58, 112)', // Cambia a Navy si es puesto
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return '$' + context.parsed.y.toLocaleString('en-US', {minimumFractionDigits: 2});
+                                },
+                                title: function(context) {
+                                    return etiquetas[context[0].dataIndex];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { callback: function(value) { return '$' + value; }, font: {size: 11} } },
+                        x: { ticks: { font: {size: 11} } }
+                    }
+                }
+            });
+        }
+
+        function exportarCSV() {
+            if(datosEnPantalla.length === 0) return;
+            let csvContent = "\uFEFFNo. Emp,Nombre,Depto,Puesto,Faltas,Hrs Extra Dobles,Hrs Extra Triples,Neto Pagado\n";
+            datosEnPantalla.forEach(e => {
+                csvContent += `"${e.noTrab}","${e.nombre}","${e.depto}","${e.puesto}","${e.faltas}","${e.horasDobles}","${e.horasTriples}","${e.neto}"\n`;
+            });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+            link.download = "Reporte.csv";
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "mi-primer-proyecto",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Marsexxxx/mi-primer-proyecto.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Marsexxxx/mi-primer-proyecto/issues"
+  },
+  "homepage": "https://github.com/Marsexxxx/mi-primer-proyecto#readme",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.2.0",
+    "pdf-extraction": "^1.0.2"
+  }
+}
