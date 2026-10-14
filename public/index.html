@@ -6,7 +6,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         tailwind.config = {
             theme: {
                 extend: {
@@ -203,20 +205,195 @@
         let distChart = null;
         let conceptosChart = null;
 
+        function formatearMoneda(num) {
+            return Number(num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        async function extraerDatosPDFNavegador(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const resultados = [];
+            const catalogoPercepciones = {};
+
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1.0 });
+                const textContent = await page.getTextContent();
+
+                const words = [];
+                textContent.items.forEach(item => {
+                    const str = (item.str || "").trim();
+                    if (!str) return;
+                    const x = item.transform[4];
+                    const yTop = viewport.height - item.transform[5];
+                    words.push({ x, y: yTop, text: str });
+                });
+
+                if (words.length === 0) continue;
+
+                words.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+
+                const lineasVisuales = [];
+                let lineaActual = [];
+                let yActual = null;
+
+                for (const w of words) {
+                    if (yActual === null) yActual = w.y;
+                    if (Math.abs(w.y - yActual) <= 3.5) {
+                        lineaActual.push(w);
+                    } else {
+                        lineaActual.sort((a, b) => a.x - b.x);
+                        lineasVisuales.push(lineaActual.map(item => item.text).join(" "));
+                        lineaActual = [w];
+                        yActual = w.y;
+                    }
+                }
+                if (lineaActual.length > 0) {
+                    lineaActual.sort((a, b) => a.x - b.x);
+                    lineasVisuales.push(lineaActual.map(item => item.text).join(" "));
+                }
+
+                const textoPagina = lineasVisuales.join("\n");
+                const bloquesPagina = textoPagina.split(/No\.\s*Trab\.?:/i);
+                if (bloquesPagina.length < 2) continue;
+
+                const textoOriginal = "No.Trab.:" + bloquesPagina[1];
+
+                const noTrabMatch = textoOriginal.match(/No\.Trab\.:\s*([A-Z0-9]+)/i);
+                if (!noTrabMatch) continue;
+                const noTrab = noTrabMatch[1].trim();
+
+                const nombreMatch = textoOriginal.match(/Nombre:\s*(.+?)(?=\s+D[ií]as|\s+N\.S\.S|\s+R\.F\.C|\n|$)/i);
+                const nombre = nombreMatch ? nombreMatch[1].trim() : "Desconocido";
+
+                const deptoMatch = textoOriginal.match(/Depto\.?:\s*(.+?)(?=\s+Per[ií]odo|\s+Fecha|\s+Faltas|\s+Puesto|\n|$)/i);
+                const depto = deptoMatch ? deptoMatch[1].trim() : "General";
+
+                const puestoMatch = textoOriginal.match(/Puesto:\s*(.+?)(?=\s+Fecha\s*Pa[gq]o|\s+Per[ií]odo|\s+C\.U\.R\.P|\n|$)/i);
+                const puesto = puestoMatch ? puestoMatch[1].trim() : "Sin Puesto";
+
+                const diasMatch = textoOriginal.match(/D[ií]as\s+Trabajados:\s*(\d+(?:\.\d+)?)/i);
+                const diasTrab = diasMatch ? String(parseFloat(diasMatch[1])) : "0";
+
+                const faltasMatch = textoOriginal.match(/Faltas:\s*(\d+(?:\.\d+)?)/i);
+                const faltas = faltasMatch ? String(parseFloat(faltasMatch[1])) : "0";
+
+                const periodoMatch = textoOriginal.match(/Per[ií]odo:?\s+(\d+)/i);
+                const periodo = periodoMatch ? periodoMatch[1].trim() : "-";
+
+                const fechaPagoMatch = textoOriginal.match(/Fecha\s*Pa[gq]o:\s*(\d{2}\/\d{2}\/\d{4})/i);
+                const fechaPago = fechaPagoMatch ? fechaPagoMatch[1].trim() : "-";
+
+                const delMatch = textoOriginal.match(/Per[ií]odo\s+Del:\s*(\d{2}\/\d{2}\/\d{4})/i);
+                const alMatch = textoOriginal.match(/\bAl:\s*(\d{2}\/\d{2}\/\d{4})/i);
+                const rangoPeriodo = (delMatch && alMatch) ? `${delMatch[1]} al ${alMatch[1]}` : "-";
+
+                const brutoMatch = textoOriginal.match(/Total\s+Percepciones\s+([\d,]+\.\d{2})/i);
+                const brutoFinal = brutoMatch ? brutoMatch[1] : "0.00";
+
+                const dedMatch = textoOriginal.match(/Total\s+Deducciones\s+([\d,]+\.\d{2})/i);
+                const dedFinal = dedMatch ? dedMatch[1] : "0.00";
+
+                const netoMatch = textoOriginal.match(/Neto\s+Pagado\s+([\d,]+\.\d{2})/i);
+                const netoFinal = netoMatch ? netoMatch[1] : "0.00";
+
+                const percepcionesEmp = {};
+                let horasDobles = "0";
+                let horasTriples = "0";
+                let montoDobles = "0.00";
+                let montoTriples = "0.00";
+
+                for (const linea of textoOriginal.split("\n")) {
+                    const lineaLimpia = linea.trim();
+                    const parteIzq = lineaLimpia.split(/\b2\d{3}\s+[A-ZÑÁÉÍÓÚÜ]/i)[0].trim();
+
+                    const matchPerc = parteIzq.match(/^(1\d{3})\s+(.+?)\s+(?:([\d,]+(?:\.\d{1,2})?)\s+)?([\d,]+\.\d{2})$/i);
+                    if (matchPerc) {
+                        const codigo = matchPerc[1];
+                        const concepto = matchPerc[2].replace(/\s+/g, ' ').trim().toUpperCase();
+                        const cantidadStr = matchPerc[3];
+                        const montoStr = matchPerc[4];
+
+                        const montoVal = parseFloat(montoStr.replace(/,/g, ''));
+                        const etiqueta = `${codigo} ${concepto}`;
+                        catalogoPercepciones[codigo] = etiqueta;
+                        percepcionesEmp[etiqueta] = formatearMoneda(montoVal);
+
+                        if (concepto.includes("HORAS EXTRA") && concepto.includes("DOBLE")) {
+                            montoDobles = formatearMoneda(montoVal);
+                            if (cantidadStr) {
+                                horasDobles = String(parseFloat(cantidadStr.replace(/,/g, '')));
+                            }
+                        } else if (concepto.includes("HORAS EXTRA") && concepto.includes("TRIPLE")) {
+                            montoTriples = formatearMoneda(montoVal);
+                            if (cantidadStr) {
+                                horasTriples = String(parseFloat(cantidadStr.replace(/,/g, '')));
+                            }
+                        }
+                    }
+                }
+
+                if (horasDobles === "0") {
+                    const doblesMatch = textoOriginal.match(/HORAS EXTRA(?:S)? DOBLES\s+([\d,]+(?:\.\d{1,2})?)\s+([\d,]+\.\d{2})/i);
+                    if (doblesMatch) {
+                        horasDobles = String(parseFloat(doblesMatch[1].replace(/,/g, '')));
+                        montoDobles = formatearMoneda(parseFloat(doblesMatch[2].replace(/,/g, '')));
+                    }
+                }
+
+                if (horasTriples === "0") {
+                    const triplesMatch = textoOriginal.match(/HORAS EXTRA(?:S)? TRIPLES\s+([\d,]+(?:\.\d{1,2})?)\s+([\d,]+\.\d{2})/i);
+                    if (triplesMatch) {
+                        horasTriples = String(parseFloat(triplesMatch[1].replace(/,/g, '')));
+                        montoTriples = formatearMoneda(parseFloat(triplesMatch[2].replace(/,/g, '')));
+                    }
+                }
+
+                resultados.push({
+                    noTrab,
+                    nombre,
+                    depto,
+                    puesto,
+                    diasTrab,
+                    faltas,
+                    periodo,
+                    fechaPago,
+                    rangoPeriodo,
+                    horasDobles,
+                    montoDobles,
+                    horasTriples,
+                    montoTriples,
+                    bruto: brutoFinal,
+                    deducciones: dedFinal,
+                    neto: netoFinal,
+                    percepciones: percepcionesEmp
+                });
+            }
+
+            const codigosOrdenados = Object.keys(catalogoPercepciones).sort();
+            const colsPercepciones = codigosOrdenados.map(c => catalogoPercepciones[c]);
+
+            for (const emp of resultados) {
+                const mapaCompleto = {};
+                for (const col of colsPercepciones) {
+                    mapaCompleto[col] = emp.percepciones[col] || "0.00";
+                }
+                emp.percepciones = mapaCompleto;
+                emp.columnasPercepciones = colsPercepciones;
+            }
+
+            return resultados;
+        }
+
         async function procesarPDFMasivo() {
             const archivoInput = document.getElementById('archivoPdf');
             if (archivoInput.files.length === 0) return;
 
-            const formData = new FormData();
-            formData.append("recibo", archivoInput.files[0]);
-            
+            const file = archivoInput.files[0];
             document.getElementById('cuerpoTabla').innerHTML = `<tr><td colspan='12' class='px-6 py-10 text-center text-asr-green1 font-bold text-lg'><i class='fa-solid fa-spinner fa-spin mr-2'></i> Procesando recibos de nomina...</td></tr>`;
 
             try {
-                const respuesta = await fetch('/analizar-masivo', { method: 'POST', body: formData });
-                if (!respuesta.ok) throw new Error("Error");
-
-                datosGlobales = await respuesta.json(); 
+                datosGlobales = await extraerDatosPDFNavegador(file);
                 columnasPercepciones = datosGlobales.length > 0 && datosGlobales[0].columnasPercepciones ? datosGlobales[0].columnasPercepciones : [];
                 columnasCompensacion = columnasPercepciones.filter(col => col.toUpperCase().includes("COMPENS"));
                 
@@ -263,6 +440,7 @@
                 aplicarFiltros(); 
 
             } catch (error) {
+                console.error(error);
                 document.getElementById('cuerpoTabla').innerHTML = `<tr><td colspan='6' class='px-6 py-8 text-center text-asr-orange font-bold'><i class='fa-solid fa-triangle-exclamation mr-1'></i> Error al procesar el archivo PDF.</td></tr>`;
             }
         }
@@ -420,7 +598,7 @@
 
             if (filtroActual === 'fatigas') {
                 datos.forEach(e => {
-                    const fmtMontoTotalExtra = e.valorMontoExtraTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    const fmtMontoTotalExtra = formatearMoneda(e.valorMontoExtraTotal);
                     filasHtml += `
                     <tr class="table-row-hover border-b border-gray-100 transition-colors">
                         <td class="px-4 py-3 font-bold text-asr-black">${e.noTrab}</td>
@@ -449,7 +627,7 @@
                         const montoVal = e.valoresPerc[col] || 0;
                         celdasComp += `<td class="px-4 py-3 text-right ${montoVal > 0 ? 'text-asr-olive font-bold bg-green-50/40' : 'text-asr-grayLight'}">$${montoTexto}</td>`;
                     });
-                    const fmtTotalComp = e.valorCompensacion.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    const fmtTotalComp = formatearMoneda(e.valorCompensacion);
 
                     filasHtml += `
                     <tr class="table-row-hover border-b border-gray-100 transition-colors">
@@ -575,13 +753,13 @@
             document.getElementById('kpi-puestos-count').innerText = `${setPuestos.size} puestos activos`;
             document.getElementById('kpi-horas').innerHTML = `${Number(totalHrs.toFixed(2))} <span class="text-xs text-asr-grayLight font-normal">hrs</span>`;
             document.getElementById('kpi-porcentaje').innerText = `Incidencia: ${porcentaje}% (${empConExtra} emp)`;
-            document.getElementById('kpi-monto-extra').innerText = "$" + Number(totalMontoExtra.toFixed(2)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('kpi-compensacion').innerText = "$" + Number(totalCompensaciones.toFixed(2)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('kpi-monto-extra').innerText = "$" + formatearMoneda(totalMontoExtra);
+            document.getElementById('kpi-compensacion').innerText = "$" + formatearMoneda(totalCompensaciones);
             document.getElementById('kpi-emp-comp').innerText = `${empConComp} empleados con bono`;
-            document.getElementById('kpi-bruto').innerText = "$" + Number(totalBruto.toFixed(2)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('kpi-deducciones').innerText = "Ded: $" + Number(totalDeducciones.toFixed(2)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('kpi-neto').innerText = "$" + Number(totalNeto.toFixed(2)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            document.getElementById('kpi-promedio-neto').innerText = "Prom: $" + Number(promedioNeto.toFixed(2)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('kpi-bruto').innerText = "$" + formatearMoneda(totalBruto);
+            document.getElementById('kpi-deducciones').innerText = "Ded: $" + formatearMoneda(totalDeducciones);
+            document.getElementById('kpi-neto').innerText = "$" + formatearMoneda(totalNeto);
+            document.getElementById('kpi-promedio-neto').innerText = "Prom: $" + formatearMoneda(promedioNeto);
         }
 
         function renderizarGraficas() {
@@ -602,7 +780,7 @@
                             <p class="text-[11px] text-asr-grayDark truncate">${emp.noTrab} | ${emp.puesto}</p>
                         </div>
                     </div>
-                    <span class="font-bold text-sm text-asr-green1 ml-2">$${emp.valorNeto.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    <span class="font-bold text-sm text-asr-green1 ml-2">$${formatearMoneda(emp.valorNeto)}</span>
                 </div>`;
             });
 
